@@ -6,21 +6,22 @@ document.addEventListener('DOMContentLoaded', function() {
             this.bindEvents();
             await this.loadTodos();
         },
-        
+
         bindEvents() {
-            document.getElementById('todoForm').addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.addTodo();
-            });
+            const form = document.getElementById('form');
+            if (form) {
+                form.addEventListener('submit', (e) => this.handleAddSubmit(e));
+            }
             
-            document.getElementById('filter').addEventListener('change', () => {
-                this.loadTodos();
-            });
+            const filter = document.getElementById('filter');
+            if (filter) {
+                filter.addEventListener('change', () => this.loadTodos());
+            }
         },
-        
+
         async apiRequest(endpoint, options = {}) {
             try {
-                const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+                const response = await fetch(`/api${endpoint}`, {
                     method: options.method || 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -29,72 +30,77 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Server Error:', errorData);
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
-                return await response.json();
+                return response.status === 204 ? null : await response.json();
             } catch (error) {
                 console.error('API Error:', error);
-                return [];
+                return null;
             }
         },
-        
+
         async loadTodos() {
             const filter = document.getElementById('filter').value;
-            const params = filter ? `?status=${filter}` : '';
+            const params = filter !== "" ? `?status=${filter}` : '';
             
-            document.getElementById('todos').innerHTML = '<div class="loading">Loading todos...</div>';
+            const container = document.getElementById('todos');
+            container.innerHTML = '<div class="loading">Loading todos...</div>';
             
-            const todos = await this.apiRequest(`/api/fbv/todos/${params}`);
-            this.todos = todos;
-            this.renderTodos();
+            const data = await this.apiRequest(`/fbv/todos/${params}`);
+            if (data) {
+                this.todos = data;
+                this.renderTodos();
+            }
         },
-        
-        async addTodo() {
-            const formData = {
+
+        async handleAddSubmit(e) {
+            e.preventDefault();
+            const data = {
                 title: document.getElementById('title').value,
-                description: document.getElementById('description').value,
+                description: document.getElementById('desc').value,
                 status: false,
-                due_date: document.getElementById('dueDate').value
+                due_date: document.getElementById('date').value 
             };
             
-            await this.apiRequest('/api/fbv/todos/create/', {
+            const result = await this.apiRequest('/fbv/todos/create/', {
                 method: 'POST',
-                body: formData
+                body: data
             });
-            
-            document.getElementById('todoForm').reset();
-            this.loadTodos();
+
+            if (result) {
+                document.getElementById('form').reset();
+                await this.loadTodos(); 
+            } else {
+                alert("Failed to save. Check terminal for errors.");
+            }
         },
         
         async deleteTodo(id) {
-            if (confirm('Are you sure you want to delete this todo?')) {
-                await this.apiRequest(`/api/fbv/todos/${id}/`, {
+            if (confirm('Delete this task?')) {
+                await this.apiRequest(`/fbv/todos/${id}/`, {
                     method: 'DELETE'
                 });
-                this.loadTodos();
+                await this.loadTodos();
             }
         },
-        
+
         renderTodos() {
             const container = document.getElementById('todos');
             
             if (this.todos.length === 0) {
-                container.innerHTML = '<div class="empty-state">🎉 No todos yet! Add one above.</div>';
+                container.innerHTML = '<div class="empty-state">🎉 No tasks found.</div>';
                 return;
             }
             
             container.innerHTML = this.todos.map(todo => `
-                <div class="todo-item">
-                    <div class="todo-title">${todo.title}</div>
-                    <div class="todo-description">${todo.status ? '✅ Completed' : '⏳ Pending'}</div>
-                    <div class="todo-meta">
-                        <span class="status-badge status-${todo.status ? 'completed' : 'pending'}">
-                            ${todo.status ? 'Completed' : 'Pending'}
-                        </span>
-                        <button class="delete-btn" onclick="app.deleteTodo(${todo.id})">
-                            🗑️ Delete
-                        </button>
+                <div class="todo ${todo.status ? 'completed' : ''}">
+                    <div class="title">${todo.title}</div>
+                    <div class="date">Due: ${todo.due_date || 'No Date'}</div>
+                    <div class="buttons">
+                        <button class="delete" onclick="app.deleteTodo(${todo.id})">🗑️ Delete</button>
                     </div>
                 </div>
             `).join('');
